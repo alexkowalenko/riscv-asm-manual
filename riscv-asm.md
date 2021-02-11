@@ -14,8 +14,24 @@ https://creativecommons.org/licenses/by/4.0/.
 
 # Command-Line Arguments
 
-I think it's probably better to beef up the binutils documentation rather than
-duplicating it here.
+GNU Assembler: 
+
+```
+riscv64-unknown-elf-as -a -march=rv64i test.s
+```
+
+LLVM/Clang:
+
+```
+clang --target=riscv64 -c test.s
+clang --target=riscv64 -march=rv64gc -c test.s -o test.o
+```
+
+Disassembly:
+
+```
+llvm-objdump --section .text -D test.o
+```
 
 # Registers
 
@@ -609,3 +625,203 @@ fsflags rd, rs    | csrrw rd, fflags, rs       | Swap FP exception flags
 fsflags rs        | csrrw x0, fflags, rs       | Write FP exception flags
 fsflagsi rd, imm  | csrrwi rd, fflags, imm     | Swap FP exception flags, immediate
 fsflagsi imm      | csrrwi x0, fflags, imm     | Write FP exception flags, immediate
+
+# RV64V Instructions 
+
+Version 0.10
+
+The vector processor has 32 vector registers, which are set to `VLEN` bits (implementation dependent). 
+
+## Setting Vector configuration
+
+`vsetvli` sets the CSR registers VL and VTYPE. `vsetvl` sets VL. (`vsetivli` 0.10 instruction - immediate value set.) These instructions configure the vector processor for following vector instructions.
+
+Suggested assembler names used for `vsetvli` immediate:
+```
+ e8    # SEW=8b
+ e16   # SEW=16b
+ e32   # SEW=32b
+ e64   # SEW=64b
+ e128  # SEW=128b
+ e256  # SEW=256b
+ e512  # SEW=512b
+ e1024 # SEW=1024b
+
+ mf8  # LMUL=1/8
+ mf4  # LMUL=1/4
+ mf2  # LMUL=1/2
+ m1   # LMUL=1, assumed if m setting absent
+ m2   # LMUL=2
+ m4   # LMUL=4
+ m8   # LMUL=8
+
+        vsetvli t0, a0, e8          # SEW= 8, LMUL=1
+        vsetvli t0, a0, e8,m2       # SEW= 8, LMUL=2
+        vsetvli t0, a0, e32,mf2     # SEW=32, LMUL=1/2
+```
+
+## Vector Load and Store
+
+### Vector unit-stride loads and stores
+
+```
+    # vd destination, rs1 base address, vm is mask encoding (v0.t or <missing>)
+    vle8.v    vd, (rs1), vm  #    8-bit unit-stride load
+    vle16.v   vd, (rs1), vm  #   16-bit unit-stride load
+    vle32.v   vd, (rs1), vm  #   32-bit unit-stride load
+    vle64.v   vd, (rs1), vm  #   64-bit unit-stride load
+    # vle128.v  vd, (rs1), vm  #  128-bit unit-stride load. Reserved
+    # vle256.v  vd, (rs1), vm  #  256-bit unit-stride load. Reserved
+    # vle512.v  vd, (rs1), vm  #  512-bit unit-stride load. Reserved
+    # vle1024.v vd, (rs1), vm  # 1024-bit unit-stride load. Reserved
+
+    # vs3 store data, rs1 base address, vm is mask encoding (v0.t or <missing>)
+    vse8.v    vs3, (rs1), vm  #    8-bit unit-stride store
+    vse16.v   vs3, (rs1), vm  #   16-bit unit-stride store
+    vse32.v   vs3, (rs1), vm  #   32-bit unit-stride store
+    vse64.v   vs3, (rs1), vm  #   64-bit unit-stride store
+    # vse128.v  vs3, (rs1), vm  #  128-bit unit-stride store. Reserved
+    # vse256.v  vs3, (rs1), vm  #  256-bit unit-stride store. Reserved
+    # vse512.v  vs3, (rs1), vm  #  512-bit unit-stride store. Reserved
+    # vse1024.v vs3, (rs1), vm  # 1024-bit unit-stride store. Reserved
+
+    # Vector unit-stride mask load
+    vle1.v vd, (rs1)   #  Load byte vector of length ceil(vl/8)
+
+    # Vector unit-stride mask store
+    vse1.v vs3, (rs1)  #  Store byte vector of length ceil(vl/8)
+```
+
+### Vector whole register instructions
+
+These instructions load and store whole vector register groups.
+
+```
+   # Format of whole register load and store instructions.
+   vl1r.v v3, (a0)       # Pseudo instruction equal to vl1re8.v
+
+   vl1re8.v    v3, (a0)  # Load v3 with VLEN/8 bytes held at address in a0
+   vl1re16.v   v3, (a0)  # Load v3 with VLEN/16 halfwords held at address in a0
+   vl1re32.v   v3, (a0)  # Load v3 with VLEN/32 words held at address in a0
+   vl1re64.v   v3, (a0)  # Load v3 with VLEN/64 doublewords held at address in a0
+   # vl1re128.v  v3, (a0) 
+   # vl1re256.v  v3, (a0)
+   # vl1re512.v  v3, (a0)
+   # vl1re1024.v v3, (a0)
+
+   vl2r.v v2, (a0)       # Pseudo instruction equal to vl2re8.v v2, (a0)
+
+   vl2re8.v    v2, (a0)  # Load v2-v3 with 2*VLEN/8 bytes from address in a0
+   vl2re16.v   v2, (a0)  # Load v2-v3 with 2*VLEN/16 halfwords held at address in a0
+   vl2re32.v   v2, (a0)  # Load v2-v3 with 2*VLEN/32 words held at address in a0
+   vl2re64.v   v2, (a0)  # Load v2-v3 with 2*VLEN/64 doublewords held at address in a0
+   # vl2re128.v  v2, (a0)
+   # vl2re256.v  v2, (a0)
+   # vl2re512.v  v2, (a0)
+   # vl2re1024.v v2, (a0)
+
+   vl4r.v v4, (a0)       # Pseudo instruction equal to vl4re8.v
+
+   vl4re8.v    v4, (a0)  # Load v4-v7 with 4*VLEN/8 bytes from address in a0
+   vl4re16.v   v4, (a0)
+   vl4re32.v   v4, (a0)
+   vl4re64.v   v4, (a0)
+   # vl4re128.v  v4, (a0)
+   # vl4re256.v  v4, (a0)
+   # vl4re512.v  v4, (a0)
+   # vl4re1024.v v4, (a0)
+
+   vl8r.v v8, (a0)       # Pseudo instruction equal to vl8re8.v
+
+   vl8re8.v    v8, (a0)  # Load v8-v15 with 8*VLEN/8 bytes from address in a0
+   vl8re16.v   v8, (a0)
+   vl8re32.v   v8, (a0)
+   vl8re64.v   v8, (a0)
+   # vl8re128.v  v8, (a0)
+   # vl8re256.v  v8, (a0)
+   # vl8re512.v  v8, (a0)
+   # vl8re1024.v v8, (a0)
+
+   vs1r.v v3, (a1)      # Store v3 to address in a1
+   vs2r.v v2, (a1)      # Store v2-v3 to address in a1
+   vs4r.v v4, (a1)      # Store v4-v7 to address in a1
+   vs8r.v v8, (a1)      # Store v8-v15 to address in a1
+```
+
+### Vector Strided Instrutions
+
+Negative and zero strides are supported.
+
+```
+    # vd destination, rs1 base address, rs2 byte stride
+    vlse8.v    vd, (rs1), rs2, vm  #    8-bit strided load
+    vlse16.v   vd, (rs1), rs2, vm  #   16-bit strided load
+    vlse32.v   vd, (rs1), rs2, vm  #   32-bit strided load
+    vlse64.v   vd, (rs1), rs2, vm  #   64-bit strided load
+    # vlse128.v  vd, (rs1), rs2, vm  #  128-bit strided load. Reserved
+    # vlse256.v  vd, (rs1), rs2, vm  #  256-bit strided load. Reserved
+    # vlse512.v  vd, (rs1), rs2, vm  #  512-bit strided load. Reserved
+    # vlse1024.v vd, (rs1), rs2, vm  # 1024-bit strided load. Reserved
+
+    # vs3 store data, rs1 base address, rs2 byte stride
+    vsse8.v    vs3, (rs1), rs2, vm  #    8-bit strided store
+    vsse16.v   vs3, (rs1), rs2, vm  #   16-bit strided store
+    vsse32.v   vs3, (rs1), rs2, vm  #   32-bit strided store
+    vsse64.v   vs3, (rs1), rs2, vm  #   64-bit strided store
+    # vsse128.v  vs3, (rs1), rs2, vm  #  128-bit strided store. Reserved
+    # vsse256.v  vs3, (rs1), rs2, vm  #  256-bit strided store. Reserved
+    # vsse512.v  vs3, (rs1), rs2, vm  #  512-bit strided store. Reserved
+    # vsse1024.v vs3, (rs1), rs2, vm  # 1024-bit strided store. Reserved
+```
+
+## Vector Indexed Instructions
+
+Vector indexed operations add the contents of each element of the
+vector offset operand specified by `vs2` to the base effective address
+to give the effective address of each element.  The data vector
+register group has EEW=SEW, EMUL=LMUL, while the offset vector
+register group has EEW encoding in the instruction and
+EMUL=(EEW/SEW)*LMUL.
+
+```
+    # Vector unordered indexed load instructions
+    # vd destination, rs1 base address, vs2 indices
+    vluxei8.v    vd, (rs1), vs2, vm  # unordered  8-bit indexed load of SEW data
+    vluxei16.v   vd, (rs1), vs2, vm  # unordered 16-bit indexed load of SEW data
+    vluxei32.v   vd, (rs1), vs2, vm  # unordered 32-bit indexed load of SEW data
+    vluxei64.v   vd, (rs1), vs2, vm  # unordered 64-bit indexed load of SEW data
+
+    # Vector ordered indexed load instructions
+    # vd destination, rs1 base address, vs2 indices
+    vloxei8.v    vd, (rs1), vs2, vm  # ordered  8-bit indexed load of SEW data
+    vloxei16.v   vd, (rs1), vs2, vm  # ordered 16-bit indexed load of SEW data
+    vloxei32.v   vd, (rs1), vs2, vm  # ordered 32-bit indexed load of SEW data
+    vloxei64.v   vd, (rs1), vs2, vm  # ordered 64-bit indexed load of SEW data
+
+    # Vector unordered-indexed store instructions
+    # vs3 store data, rs1 base address, vs2 indices
+    vsuxei8.v   vs3, (rs1), vs2, vm # unordered  8-bit indexed store of SEW data
+    vsuxei16.v  vs3, (rs1), vs2, vm # unordered 16-bit indexed store of SEW data
+    vsuxei32.v  vs3, (rs1), vs2, vm # unordered 32-bit indexed store of SEW data
+    vsuxei64.v  vs3, (rs1), vs2, vm # unordered 64-bit indexed store of SEW data
+
+    # Vector ordered indexed store instructions
+    # vs3 store data, rs1 base address, vs2 indices
+    vsoxei8.v    vs3, (rs1), vs2, vm  # ordered  8-bit indexed store of SEW data
+    vsoxei16.v   vs3, (rs1), vs2, vm  # ordered 16-bit indexed store of SEW data
+    vsoxei32.v   vs3, (rs1), vs2, vm  # ordered 32-bit indexed store of SEW data
+    vsoxei64.v   vs3, (rs1), vs2, vm  # ordered 64-bit indexed store of SEW data
+```
+# Vector Integer Arthmetic Instructions
+
+# Vector Fixed Point Arthmetic Instructions
+
+# Vector Floating Point Instructions
+# Vector Mask Instructions
+
+The `vid.v` instruction writes each element's index to the
+destination vector register group, from 0 to `vl`-1.
+
+```
+    vid.v vd, vm  # Write element ID to destination.
+```
